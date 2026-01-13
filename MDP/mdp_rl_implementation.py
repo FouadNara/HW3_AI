@@ -68,7 +68,16 @@ def policy_iteration(mdp, policy_init):
     optimal_policy = None
     # TODO:
     # ====== YOUR CODE: ======
-
+    policy = policy_init
+    while True:
+        U = policy_evaluation(mdp, policy)
+        new_policy = {}
+        for state in mdp.states:
+            new_policy[state] = max(mdp.actions, key=lambda action: mdp.get_reward(state) + mdp.gamma * sum([mdp.transition_function[state][action][i] * U[i] for i in mdp.states]))
+        if new_policy == policy:
+            break
+        policy = new_policy
+    optimal_policy = policy
     # ========================
     return optimal_policy
 
