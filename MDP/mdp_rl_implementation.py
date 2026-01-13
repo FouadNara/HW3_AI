@@ -14,7 +14,15 @@ def value_iteration(mdp, U_init, epsilon=10 ** (-3)):
     U_final = None
     # TODO:
     # ====== YOUR CODE: ======
-
+    while True:
+        U_new = {}
+        for state in mdp.states:
+            U_new[state] = mdp.get_reward(state) + mdp.gamma * max(
+                [sum([mdp.transition_function[state][action][i] * U_init[i] for i in mdp.states]) for action in mdp.actions]
+            )
+        if max(abs(U_new[state] - U_init[state]) for state in mdp.states) < epsilon:
+            break
+        U_init = U_new
     # ========================
     return U_final
 
@@ -27,6 +35,8 @@ def get_policy(mdp, U):
     policy = None
     # TODO:
     # ====== YOUR CODE: ====== 
+    for state in mdp.states:
+        policy[state] = max(mdp.actions, key=lambda action: mdp.get_reward(state) + mdp.gamma * sum([mdp.transition_function[state][action][i] * U[i] for i in mdp.states]))
 
     # ========================
     return policy
@@ -39,9 +49,15 @@ def policy_evaluation(mdp, policy):
     U = None
     # TODO:
     # ====== YOUR CODE: ======
-
-    # ========================
+    while True:
+        U_new = {}
+        for state in mdp.states:
+            U_new[state] = mdp.get_reward(state) + mdp.gamma * sum([mdp.transition_function[state][policy[state]][i] * U[i] for i in mdp.states])
+        if max(abs(U_new[state] - U[state]) for state in mdp.states) < 10 ** (-3):
+            break
+        U = U_new
     return U
+    # ========================
 
 
 def policy_iteration(mdp, policy_init):
