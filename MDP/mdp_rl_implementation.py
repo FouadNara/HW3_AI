@@ -98,7 +98,43 @@ def mc_algorithm(
     V = None
 
     # ====== YOUR CODE: ======
+    # Initialize returns and counts for each state
+    total_returns = { (r, c): 0.0 for r in range(num_rows) for c in range(num_cols) }
+    counts = { (r, c): 0 for r in range(num_rows) for c in range(num_cols) }
+    
+    # Identify wall locations to set them to None later [cite: 311]
+    # We assume the simulator or MDP can provide wall info; if not, we filter by visits.
+    
+    for _ in range(num_episodes):
+        episode = sim.run_episode(policy) # Episode: list of (state, reward, action, actual_action) [cite: 291]
+        
+        visited_in_episode = set()
+        for i in range(len(episode)):
+            state = episode[i][0]
+            
+            # First-visit check 
+            if state not in visited_in_episode:
+                visited_in_episode.add(state)
+                
+                # Calculate G (return): sum of discounted rewards from this step onwards
+                G = 0
+                for t in range(i, len(episode)):
+                    reward = episode[t][1]
+                    G += (gamma ** (t - i)) * reward
+                
+                total_returns[state] += G
+                counts[state] += 1
 
+    # Finalize Utility V
+    V = {}
+    for r in range(num_rows):
+        for c in range(num_cols):
+            state = (r, c)
+            if counts[state] > 0:
+                V[state] = total_returns[state] / counts[state]
+            else:
+                # If not visited, utility is 0; if it's a wall, logic in simulator usually omits it [cite: 312]
+                V[state] = 0.0
     # =========================
 
     return V
