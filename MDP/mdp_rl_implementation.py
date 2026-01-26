@@ -3,138 +3,165 @@ from simulator import Simulator
 from typing import Dict, List, Tuple
 import numpy as np
 
+# Helper to map the transition probability tuple to Action enums
+ACTION_ORDER = [Action.UP, Action.DOWN, Action.RIGHT, Action.LEFT]
 
 def value_iteration(mdp, U_init, epsilon=10 ** (-3)):
-    # Given the mdp, the initial utility of each state - U_init,
-    #   and the upper limit - epsilon.
-    # run the value iteration algorithm and
-    # return: the utility for each of the MDP's state obtained at the end of the algorithms' run.
-    #
-
-    U_final = None
-    # TODO:
-    # ====== YOUR CODE: ======
+    # Initialize U as a 2D list to match mdp.print_utility expectations
+    U = [row[:] for row in U_init]
+    
     while True:
-        U_new = {}
-        for state in mdp.states:
-            U_new[state] = mdp.get_reward(state) + mdp.gamma * max(
-                [sum([mdp.transition_function[state][action][i] * U_init[i] for i in mdp.states]) for action in mdp.actions]
-            )
-        if max(abs(U_new[state] - U_init[state]) for state in mdp.states) < epsilon:
+        U_new = [row[:] for row in U]
+        delta = 0
+        
+        for r in range(mdp.num_row):
+            for c in range(mdp.num_col):
+                state = (r, c)
+                
+                # Skip walls
+                if mdp.board[r][c] == "WALL":
+                    continue
+                
+                # Terminal states have no future utility
+                if state in mdp.terminal_states:
+                    U_new[r][c] = float(mdp.get_reward(state))
+                    continue
+                
+                # Bellman Update: R(s) + gamma * max_a(sum(P(s'|s,a) * U(s')))
+                action_values = []
+                for action in Action:
+                    expected_val = 0
+                    probs = mdp.transition_function[action]
+                    for i, prob in enumerate(probs):
+                        if prob > 0:
+                            actual_dir = ACTION_ORDER[i]
+                            next_s = mdp.step(state, actual_dir)
+                            expected_val += prob * U[next_s[0]][next_s[1]]
+                    action_values.append(expected_val)
+                
+                U_new[r][c] = float(mdp.get_reward(state)) + mdp.gamma * max(action_values)
+                delta = max(delta, abs(U_new[r][c] - U[r][c]))
+        
+        U = U_new
+        # Convergence criteria for value iteration
+        if delta < epsilon * (1 - mdp.gamma) / mdp.gamma:
             break
-        U_init = U_new
-    # ========================
-    return U_final
+            
+    return U
 
 
 def get_policy(mdp, U):
-    # Given the mdp and the utility of each state - U (which satisfies the Belman equation)
-    # return: the policy
-    #
+    # Initialize policy as a 2D grid
+    policy = [["None" for _ in range(mdp.num_col)] for _ in range(mdp.num_row)]
+    
+    for r in range(mdp.num_row):
+        for c in range(mdp.num_col):
+            state = (r, c)
+            
+            if mdp.board[r][c] == "WALL" or state in mdp.terminal_states:
+                policy[r][c] = "None"
+                continue
 
-    policy = None
-    # TODO:
-    # ====== YOUR CODE: ====== 
-    for state in mdp.states:
-        policy[state] = max(mdp.actions, key=lambda action: mdp.get_reward(state) + mdp.gamma * sum([mdp.transition_function[state][action][i] * U[i] for i in mdp.states]))
-
-    # ========================
+            best_action = None
+            max_val = float('-inf')
+            
+            for action in Action:
+                expected_val = 0
+                probs = mdp.transition_function[action]
+                for i, prob in enumerate(probs):
+                    if prob > 0:
+                        actual_dir = ACTION_ORDER[i]
+                        next_s = mdp.step(state, actual_dir)
+                        expected_val += prob * U[next_s[0]][next_s[1]]
+                
+                if expected_val > max_val:
+                    max_val = expected_val
+                    best_action = action.value # Use string value for printing
+            
+            policy[r][c] = best_action
     return policy
 
 
 def policy_evaluation(mdp, policy):
-    # Given the mdp, and a policy
-    # return: the utility U(s) of each state s
-    #
-    U = None
-    # TODO:
-    # ====== YOUR CODE: ======
+    # Initialize U with rewards
+    U = [[0.0 for _ in range(mdp.num_col)] for _ in range(mdp.num_row)]
+    
     while True:
-        U_new = {}
-        for state in mdp.states:
-            U_new[state] = mdp.get_reward(state) + mdp.gamma * sum([mdp.transition_function[state][policy[state]][i] * U[i] for i in mdp.states])
-        if max(abs(U_new[state] - U[state]) for state in mdp.states) < 10 ** (-3):
-            break
+        U_new = [row[:] for row in U]
+        delta = 0
+        for r in range(mdp.num_row):
+            for c in range(mdp.num_col):
+                state = (r, c)
+                if mdp.board[r][c] == "WALL":
+                    continue
+                if state in mdp.terminal_states:
+                    U_new[r][c] = float(mdp.get_reward(state))
+                    continue
+                
+                # U(s) = R(s) + gamma * sum(P(s'|s, pi(s)) * U(s'))
+                # policy[r][c] is the string value, convert back to Action enum
+                chosen_action = Action(policy[r][c])
+                probs = mdp.transition_function[chosen_action]
+                expected_val = 0
+                for i, prob in enumerate(probs):
+                    if prob > 0:
+                        actual_dir = ACTION_ORDER[i]
+                        next_s = mdp.step(state, actual_dir)
+                        expected_val += prob * U[next_s[0]][next_s[1]]
+                
+                U_new[r][c] = float(mdp.get_reward(state)) + mdp.gamma * expected_val
+                delta = max(delta, abs(U_new[r][c] - U[r][c]))
+        
         U = U_new
+        if delta < 10 ** (-3):
+            break
     return U
-    # ========================
 
 
 def policy_iteration(mdp, policy_init):
-    # Given the mdp, and the initial policy - policy_init
-    # run the policy iteration algorithm
-    # return: the optimal policy
-    #
-    optimal_policy = None
-    # TODO:
-    # ====== YOUR CODE: ======
     policy = policy_init
     while True:
         U = policy_evaluation(mdp, policy)
-        new_policy = {}
-        for state in mdp.states:
-            new_policy[state] = max(mdp.actions, key=lambda action: mdp.get_reward(state) + mdp.gamma * sum([mdp.transition_function[state][action][i] * U[i] for i in mdp.states]))
+        new_policy = get_policy(mdp, U)
+        
         if new_policy == policy:
             break
         policy = new_policy
-    optimal_policy = policy
-    # ========================
-    return optimal_policy
+    return policy
 
 
-def mc_algorithm(
-        sim,
-        num_episodes,
-        gamma,
-        num_rows=3,
-        num_cols=4,
-        actions=[Action.UP, Action.DOWN, Action.LEFT, Action.RIGHT],
-        policy=None,
-):
-    # Given a simulator, the number of episodes to run, the number of rows and columns in the MDP, the possible actions,
-    # and an optional policy, run the Monte Carlo algorithm to estimate the utility of each state.
-    # Return the utility of each state.
-
-    V = None
-
-    # ====== YOUR CODE: ======
-    # Initialize returns and counts for each state
-    total_returns = { (r, c): 0.0 for r in range(num_rows) for c in range(num_cols) }
-    counts = { (r, c): 0 for r in range(num_rows) for c in range(num_cols) }
+def mc_algorithm(sim, num_episodes, gamma, num_rows=3, num_cols=4, 
+                 actions=[Action.UP, Action.DOWN, Action.LEFT, Action.RIGHT], policy=None):
     
-    # Identify wall locations to set them to None later [cite: 311]
-    # We assume the simulator or MDP can provide wall info; if not, we filter by visits.
+    total_returns = np.zeros((num_rows, num_cols))
+    counts = np.zeros((num_rows, num_cols))
     
     for _ in range(num_episodes):
-        episode = sim.run_episode(policy) # Episode: list of (state, reward, action, actual_action) [cite: 291]
+        # episode is a list of (state, reward, action, actual_action)
+        episode = sim.run_episode(policy)
         
-        visited_in_episode = set()
+        visited_states = set()
         for i in range(len(episode)):
             state = episode[i][0]
             
-            # First-visit check 
-            if state not in visited_in_episode:
-                visited_in_episode.add(state)
+            # First-visit Monte Carlo
+            if state not in visited_states:
+                visited_states.add(state)
                 
-                # Calculate G (return): sum of discounted rewards from this step onwards
+                # Calculate discounted return G
                 G = 0
                 for t in range(i, len(episode)):
                     reward = episode[t][1]
                     G += (gamma ** (t - i)) * reward
                 
-                total_returns[state] += G
-                counts[state] += 1
+                total_returns[state[0]][state[1]] += G
+                counts[state[0]][state[1]] += 1
 
-    # Finalize Utility V
-    V = {}
+    # Create 2D list for utility
+    V = [[0.0 for _ in range(num_cols)] for _ in range(num_rows)]
     for r in range(num_rows):
         for c in range(num_cols):
-            state = (r, c)
-            if counts[state] > 0:
-                V[state] = total_returns[state] / counts[state]
-            else:
-                # If not visited, utility is 0; if it's a wall, logic in simulator usually omits it [cite: 312]
-                V[state] = 0.0
-    # =========================
-
+            if counts[r][c] > 0:
+                V[r][c] = total_returns[r][c] / counts[r][c]
+                
     return V
