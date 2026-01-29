@@ -1,65 +1,55 @@
 from mdp import Action, MDP
 from simulator import Simulator
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 import numpy as np
 
-# Helper to map the transition probability tuple to Action enums
+# This matches the order of probabilities in the transition_function tuples
 ACTION_ORDER = [Action.UP, Action.DOWN, Action.RIGHT, Action.LEFT]
 
-def value_iteration(mdp, U_init, epsilon=10 ** (-3)):
-    # Initialize U as a 2D list to match mdp.print_utility expectations
+def value_iteration(mdp: MDP, U_init: List[List[float]], epsilon=10 ** (-3)):
     U = [row[:] for row in U_init]
     
     while True:
         U_new = [row[:] for row in U]
         delta = 0
-        
         for r in range(mdp.num_row):
             for c in range(mdp.num_col):
                 state = (r, c)
-                
-                # Skip walls
                 if mdp.board[r][c] == "WALL":
+                    U_new[r][c] = None
                     continue
                 
-                # Terminal states have no future utility
                 if state in mdp.terminal_states:
                     U_new[r][c] = float(mdp.get_reward(state))
                     continue
                 
-                # Bellman Update: R(s) + gamma * max_a(sum(P(s'|s,a) * U(s')))
                 action_values = []
                 for action in Action:
                     expected_val = 0
                     probs = mdp.transition_function[action]
                     for i, prob in enumerate(probs):
                         if prob > 0:
-                            actual_dir = ACTION_ORDER[i]
-                            next_s = mdp.step(state, actual_dir)
-                            expected_val += prob * U[next_s[0]][next_s[1]]
+                            next_s = mdp.step(state, ACTION_ORDER[i])
+                            val = U[next_s[0]][next_s[1]]
+                            expected_val += prob * (val if val is not None else 0)
                     action_values.append(expected_val)
                 
                 U_new[r][c] = float(mdp.get_reward(state)) + mdp.gamma * max(action_values)
                 delta = max(delta, abs(U_new[r][c] - U[r][c]))
         
         U = U_new
-        # Convergence criteria for value iteration
         if delta < epsilon * (1 - mdp.gamma) / mdp.gamma:
             break
-            
     return U
 
-
-def get_policy(mdp, U):
-    # Initialize policy as a 2D grid
-    policy = [["None" for _ in range(mdp.num_col)] for _ in range(mdp.num_row)]
+def get_policy(mdp: MDP, U: List[List[float]]):
+    policy = [[None for _ in range(mdp.num_col)] for _ in range(mdp.num_row)]
     
     for r in range(mdp.num_row):
         for c in range(mdp.num_col):
             state = (r, c)
-            
             if mdp.board[r][c] == "WALL" or state in mdp.terminal_states:
-                policy[r][c] = "None"
+                policy[r][c] = None
                 continue
 
             best_action = None
@@ -70,21 +60,19 @@ def get_policy(mdp, U):
                 probs = mdp.transition_function[action]
                 for i, prob in enumerate(probs):
                     if prob > 0:
-                        actual_dir = ACTION_ORDER[i]
-                        next_s = mdp.step(state, actual_dir)
-                        expected_val += prob * U[next_s[0]][next_s[1]]
+                        next_s = mdp.step(state, ACTION_ORDER[i])
+                        val = U[next_s[0]][next_s[1]]
+                        expected_val += prob * (val if val is not None else 0)
                 
                 if expected_val > max_val:
                     max_val = expected_val
-                    best_action = action.value # Use string value for printing
+                    best_action = action
             
             policy[r][c] = best_action
     return policy
 
-
-def policy_evaluation(mdp, policy):
-    # Initialize U with rewards
-    U = [[0.0 for _ in range(mdp.num_col)] for _ in range(mdp.num_row)]
+def policy_evaluation(mdp: MDP, policy: List[List[Optional[Action]]]):
+    U = [[0.0 if mdp.board[r][c] != "WALL" else None for c in range(mdp.num_col)] for r in range(mdp.num_row)]
     
     while True:
         U_new = [row[:] for row in U]
@@ -92,22 +80,23 @@ def policy_evaluation(mdp, policy):
         for r in range(mdp.num_row):
             for c in range(mdp.num_col):
                 state = (r, c)
-                if mdp.board[r][c] == "WALL":
-                    continue
+                if U[r][c] is None: continue
                 if state in mdp.terminal_states:
                     U_new[r][c] = float(mdp.get_reward(state))
                     continue
                 
-                # U(s) = R(s) + gamma * sum(P(s'|s, pi(s)) * U(s'))
-                # policy[r][c] is the string value, convert back to Action enum
-                chosen_action = Action(policy[r][c])
+                chosen_action = policy[r][c]
+                # Handle cases where the policy might contain strings or Action Enums
+                if isinstance(chosen_action, str):
+                    chosen_action = Action[chosen_action]
+                
                 probs = mdp.transition_function[chosen_action]
                 expected_val = 0
                 for i, prob in enumerate(probs):
                     if prob > 0:
-                        actual_dir = ACTION_ORDER[i]
-                        next_s = mdp.step(state, actual_dir)
-                        expected_val += prob * U[next_s[0]][next_s[1]]
+                        next_s = mdp.step(state, ACTION_ORDER[i])
+                        val = U[next_s[0]][next_s[1]]
+                        expected_val += prob * (val if val is not None else 0)
                 
                 U_new[r][c] = float(mdp.get_reward(state)) + mdp.gamma * expected_val
                 delta = max(delta, abs(U_new[r][c] - U[r][c]))
@@ -117,38 +106,42 @@ def policy_evaluation(mdp, policy):
             break
     return U
 
-
-def policy_iteration(mdp, policy_init):
+def policy_iteration(mdp: MDP, policy_init: List[List[Optional[Action]]]):
     policy = policy_init
     while True:
         U = policy_evaluation(mdp, policy)
         new_policy = get_policy(mdp, U)
-        
         if new_policy == policy:
             break
         policy = new_policy
     return policy
 
-
-def mc_algorithm(sim, num_episodes, gamma, num_rows=3, num_cols=4, 
-                 actions=[Action.UP, Action.DOWN, Action.LEFT, Action.RIGHT], policy=None):
-    
+def mc_algorithm(
+    sim: Simulator,
+    num_episodes: int,
+    gamma: float,
+    num_rows: int = 3,
+    num_cols: int = 4,
+    actions: List[Action] = [Action.UP, Action.DOWN, Action.LEFT, Action.RIGHT],
+    policy: List[List[Optional[Action]]] = None,
+):
+    # Initialize returns and visit counts for all grid cells
     total_returns = np.zeros((num_rows, num_cols))
     counts = np.zeros((num_rows, num_cols))
     
-    for _ in range(num_episodes):
-        # episode is a list of (state, reward, action, actual_action)
-        episode = sim.run_episode(policy)
+    # Use sim.replay to retrieve episodes from the simulation results
+    for episode_gen in sim.replay(num_episodes=num_episodes):
+        episode = list(episode_gen) # List of (state, reward, action, actual_action)
+        visited_in_episode = set()
         
-        visited_states = set()
         for i in range(len(episode)):
             state = episode[i][0]
             
-            # First-visit Monte Carlo
-            if state not in visited_states:
-                visited_states.add(state)
+            # First-visit Monte Carlo: only process the first time we see 'state' in this episode
+            if state not in visited_in_episode:
+                visited_in_episode.add(state)
                 
-                # Calculate discounted return G
+                # Calculate G: sum of discounted rewards from step i to the end
                 G = 0
                 for t in range(i, len(episode)):
                     reward = episode[t][1]
@@ -157,11 +150,14 @@ def mc_algorithm(sim, num_episodes, gamma, num_rows=3, num_cols=4,
                 total_returns[state[0]][state[1]] += G
                 counts[state[0]][state[1]] += 1
 
-    # Create 2D list for utility
+    # Final estimation of Utility V
     V = [[0.0 for _ in range(num_cols)] for _ in range(num_rows)]
     for r in range(num_rows):
         for c in range(num_cols):
             if counts[r][c] > 0:
                 V[r][c] = total_returns[r][c] / counts[r][c]
+            else:
+                # Per instructions: if state was never visited, utility is 0.0
+                V[r][c] = 0.0
                 
     return V
