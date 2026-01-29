@@ -62,7 +62,17 @@ def mc_example_driver():
     sim = Simulator()
     reward_matrix = mc_algorithm(sim=sim, num_episodes=10, gamma=0.9, policy=policy)
 
-    print("Reward Matrix:")
+    print("Reward Matrix with 10 episodes:")
+    print(reward_matrix)
+
+    reward_matrix = mc_algorithm(sim=sim, num_episodes=100, gamma=0.9, policy=policy)
+
+    print("Reward Matrix with 100 episodes:")
+    print(reward_matrix)
+
+    reward_matrix = mc_algorithm(sim=sim, num_episodes=1000, gamma=0.9, policy=policy)
+
+    print("Reward Matrix with 1000 episodes:")
     print(reward_matrix)
 
 

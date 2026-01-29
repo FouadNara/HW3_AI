@@ -155,9 +155,9 @@ def mc_algorithm(
     for r in range(num_rows):
         for c in range(num_cols):
             if counts[r][c] > 0:
-                V[r][c] = total_returns[r][c] / counts[r][c]
+                # Use .item() to convert the NumPy scalar to a native Python float
+                V[r][c] = (total_returns[r][c] / counts[r][c]).item()
             else:
-                # Per instructions: if state was never visited, utility is 0.0
                 V[r][c] = 0.0
                 
     return V
